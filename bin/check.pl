@@ -226,14 +226,14 @@ for ($i=0;$i<$user_count;$i++) {
     # Check with ip addresses
     foreach my $ip (@ips) {
         LOGINF "Ping $ip";
-        # This sends really a lot of request, but it makes sure we get an answer as fast as possible
-        if (system("sudo /usr/sbin/arping -W 0.0002 -C1 -c5000 $ip $log_cmd") == 0) {
+        my $exitCode = system("/bin/ping -c 1 2>&1 > /dev/null $ip");
+        if($exitCode) {
+            LOGINF "Host $ip is offline";
+        } else {
             LOGINF "Host $ip is online";
             $users[$i]{ONLINE} = 1;
             $found = 1;
             last;
-        } else {
-            LOGINF "Host $ip is offline";
         }
     }
 
@@ -244,17 +244,21 @@ for ($i=0;$i<$user_count;$i++) {
 
     # Check with mac addresses
     foreach my $mac (@macs) {
-        LOGINF "Ping $mac";
-        # This sends really a lot of request, but it makes sure we get an answer as fast as possible
-        if (system("sudo /usr/sbin/arping -W 0.0002 -C1 -c5000 $mac $log_cmd") == 0) {
-            LOGINF "Mac $mac is online";
-            $users[$i]{ONLINE} = 1;
-            last;
-        } else {
-            LOGINF "Mac $mac is offline";
+        my $ip = `/sbin/ip neighbor | grep "$mac" | cut -d" " -f1`;
+        if($ip) {
+            LOGINF "Ping $mac ($ip)";
+            my $exitCode = system("/bin/ping -c 1 2>&1 > /dev/null $ip");
+            if ($exitCode) {
+                LOGINF "Mac $mac ($ip) is offline";
+            } else {
+                LOGINF "Mac $mac ($ip) is online";
+                $users[$i]{ONLINE} = 1;
+                last;
+            }
         }
     }
 }
+
 # send Data
 sendFoundUsers();
 LOGEND "Operation finished sucessfully.";
@@ -294,10 +298,10 @@ sub sendFoundUsers()
             $mqtt->login($mqttcred->{brokeruser}, $mqttcred->{brokerpass});
         }
 
-            for ($j=0;$j<$user_count;$j++) {
-                $mqtt->retain("wifiscanner/".$users[$j]{NAME}, $users[$j]{ONLINE}) or lox_die "Send error: $!";
-                LOGOK "Sending Data 'wifiscanner/$users[$j]{NAME}/$users[$j]{ONLINE}' to MQTT broker $mqttcred->{brokeraddress}";
-                }
+        for ($j=0;$j<$user_count;$j++) {
+            $mqtt->retain("wifiscanner/".$users[$j]{NAME}, $users[$j]{ONLINE}) or lox_die "Send error: $!";
+            LOGOK "Sending Data 'wifiscanner/$users[$j]{NAME}/$users[$j]{ONLINE}' to MQTT broker $mqttcred->{brokeraddress}";
+        }
         $mqtt->disconnect();
     }
 }

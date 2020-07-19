@@ -216,18 +216,17 @@ for ($i=0;$i<$user_count;$i++) {
     my @macs = @{$user{MACS}};
     my @ips = @{$user{IPS}};
 
-    $log_cmd = "";
+    $log_cmd = "2>&1 > /dev/null";
     if ($log->loglevel() >= 7) {
         my $logfile = $log->filename();
-       $log_cmd = ">> $logfile 2>&1";
+       $log_cmd = ">> $logfile 2>&1 > /dev/null";
     }
 
     $found = 0;
     # Check with ip addresses
     foreach my $ip (@ips) {
         LOGINF "Ping $ip";
-        # This sends really a lot of request, but it makes sure we get an answer as fast as possible
-        if (system("sudo /usr/sbin/arping -W 0.0002 -C1 -c5000 $ip $log_cmd") == 0) {
+        if(system("/bin/ping -c 1 $ip $log_cmd") == 0) {
             LOGINF "Host $ip is online";
             $users[$i]{ONLINE} = 1;
             $found = 1;
@@ -244,17 +243,24 @@ for ($i=0;$i<$user_count;$i++) {
 
     # Check with mac addresses
     foreach my $mac (@macs) {
-        LOGINF "Ping $mac";
-        # This sends really a lot of request, but it makes sure we get an answer as fast as possible
-        if (system("sudo /usr/sbin/arping -W 0.0002 -C1 -c5000 $mac $log_cmd") == 0) {
-            LOGINF "Mac $mac is online";
-            $users[$i]{ONLINE} = 1;
-            last;
+        LOGINF "Resolving $mac ...";
+        my $ip = `/sbin/ip neighbor | grep "$mac" | cut -d" " -f1`;
+        if($ip) {
+            LOGINF "$mac has IP $ip";
+            LOGINF "Ping $ip";
+            if(system("/bin/ping -c 1 $log_cmd $ip") == 0) {
+                LOGINF "Host $ip is online";
+                $users[$i]{ONLINE} = 1;
+                last;
+            } else {
+                LOGINF "Host $ip is offline";
+            }
         } else {
-            LOGINF "Mac $mac is offline";
+            LOGINF "IP for $mac could not be resolved";
         }
     }
 }
+
 # send Data
 sendFoundUsers();
 LOGEND "Operation finished sucessfully.";
